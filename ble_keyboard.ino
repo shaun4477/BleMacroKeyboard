@@ -28,7 +28,7 @@
 #include "HIDKeyboardTypes.h"
 #include <driver/adc.h>
 
-const char *helloStr = "Hello from BLE Keyboard";
+const char *helloStr = "AaBbCcDdEeFfGg - Hello from BLE Keyboard";
 const char *deviceName = "ShaunKeyboard";
 const char *manufacturerName = "Shaun";
 
@@ -146,14 +146,18 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Starting BLE work!");
 
+  // Do not reinitialize Serial in M5.begin otherwise ESP32 
+  // debug logging will stop working
   M5.begin(true, true, false);
 
+#if 0
   pinMode(12, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(12), clickNumLock, CHANGE);   // Num Lock
   pinMode(14, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(13), clickCapsLock, CHANGE);   // Caps Lock
   pinMode(32, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(32), clickScrollLock, CHANGE);   // Scroll Lock
+#endif
 
   // The home button on the M5Stick sends text
   pinMode(BUTTON_A_PIN, INPUT_PULLUP);
@@ -171,14 +175,19 @@ void loop() {
 
     while (*hello){
       KEYMAP map = keymap[(uint8_t)*hello];
-      Serial.println(buttons);
-      uint8_t msg[] = {map.modifier || buttons, 0x0, map.usage, 0x0,0x0,0x0,0x0,0x0};
-      input->setValue(msg,sizeof(msg));
+      Serial.printf("Sending %c with %02x %02x\n", *hello, map.modifier, map.usage);
+
+      // Send HID report for key down
+      // TODO: 'buttons' variable ignored for now
+      uint8_t msg[] = {map.modifier, 0x0, map.usage, 0x0, 0x0, 0x0, 0x0, 0x0};
+      input->setValue(msg, sizeof(msg));
       input->notify();
       hello++;
-      uint8_t msg1[] = {0x0, 0x0, 0x0, 0x0,0x0,0x0,0x0,0x0};
 
-      input->setValue(msg1,sizeof(msg1));
+      // Send HID report showing key back up
+      uint8_t msg1[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+
+      input->setValue(msg1, sizeof(msg1));
       input->notify();
       delay(10);
     }
