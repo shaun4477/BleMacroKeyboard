@@ -29,29 +29,47 @@
 #include <driver/adc.h>
 
 const char *helloStr = "AaBbCcDdEeFfGg - Hello from BLE Keyboard";
-const char *deviceName = "ShaunKeyboard";
-const char *manufacturerName = "Shaun";
+const char *deviceName = "Meeting Keyboard";
+const char *manufacturerName = "SMC";
 
 BLEHIDDevice* hid;
 BLECharacteristic* input;
 BLECharacteristic* output;
 
-uint8_t buttons = 0;
-uint8_t button1 = 0;
-uint8_t button2 = 0;
-uint8_t button3 = 0;
 volatile uint8_t sendString = 0;
 bool connected = false;
 
 class MyCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer){
+  void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param){
     connected = true;
+    
     BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+    
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setCursor(0, 0, 2);
+    M5.Lcd.printf("BLE Keyboard connected");
+
+    Serial.printf("Connection ID %d Peer %02x:%02x:%02x:%02x:%02x:%02x\n", 
+                  param->connect.conn_id, 
+                  param->connect.remote_bda[0], param->connect.remote_bda[1], param->connect.remote_bda[2],
+                  param->connect.remote_bda[3], param->connect.remote_bda[4], param->connect.remote_bda[5]);
+                  
+    Serial.printf("BLE keyboard connected, count %d\n", pServer->getConnectedCount());
+    for (auto const &it : pServer->getPeerDevices(false)) {
+      Serial.printf("Server Connection Id %d Data 0x%08x\n", it.first, it.second);
+    }
+    for (auto const &it : pServer->getPeerDevices(true)) {
+      Serial.printf("Client Connection Id %d Data 0x%08x\n", it.first, it.second);
+    }
+    
     desc->setNotifications(true);
   }
 
   void onDisconnect(BLEServer* pServer){
     connected = false;
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setCursor(0, 0, 2);
+    M5.Lcd.printf("BLE Keyboard DISCONNECTED");
     BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
     desc->setNotifications(false);
   }
@@ -73,8 +91,16 @@ class MyCallbacks : public BLEServerCallbacks {
 
 void taskServer(void*){
   BLEDevice::init(deviceName);
+
+  esp_bd_addr_t *pLocalAddr = BLEDevice::getAddress().getNative();
+  
+  Serial.printf("BLE initialized, address %02x:%02x:%02x:%02x:%02x:%02x\n", 
+                (*pLocalAddr)[0], (*pLocalAddr)[1], (*pLocalAddr)[2], 
+                (*pLocalAddr)[3], (*pLocalAddr)[4], (*pLocalAddr)[5]);
+                
   BLEServer *pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyCallbacks());
+  Serial.printf("Created BLE server at 0x%08x\n", pServer);
 
   hid = new BLEHIDDevice(pServer);
   input = hid->inputReport(1); // <-- input REPORTID from report map
@@ -150,6 +176,12 @@ void setup() {
   // debug logging will stop working
   M5.begin(true, true, false);
 
+  M5.Lcd.setRotation(3);
+  
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setCursor(0, 0, 2);
+  M5.Lcd.printf("Initializing BLE Keyboard...");
+  
 #if 0
   pinMode(12, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(12), clickNumLock, CHANGE);   // Num Lock
@@ -178,7 +210,6 @@ void loop() {
       Serial.printf("Sending %c with %02x %02x\n", *hello, map.modifier, map.usage);
 
       // Send HID report for key down
-      // TODO: 'buttons' variable ignored for now
       uint8_t msg[] = {map.modifier, 0x0, map.usage, 0x0, 0x0, 0x0, 0x0, 0x0};
       input->setValue(msg, sizeof(msg));
       input->notify();
@@ -193,24 +224,6 @@ void loop() {
     }
   }
   delay(50);
-}
-
-IRAM_ATTR void clickNumLock(){
-  button1 = buttons&&0x01;
-  button1 != button1;
-  buttons = button1<<0;
-}
-
-IRAM_ATTR void clickCapsLock(){
-  button2 = buttons&&0x02;
-  button2 != button2;  
-  buttons = button2<<1;
-}
-
-IRAM_ATTR void clickScrollLock(){
-  button3 = buttons&&0x04;
-  button3 != button3;  
-  buttons = button3<<2;
 }
 
 IRAM_ATTR void clickHome(){
