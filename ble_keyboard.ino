@@ -28,7 +28,7 @@
 #include "HIDKeyboardTypes.h"
 #include <driver/adc.h>
 
-const char *helloStr = "AaBbCcDdEeFfGg - Hello from BLE Keyboard";
+const char *helloStr = "AaBbCcDd";
 const char *deviceName = "Meeting Keyboard";
 const char *manufacturerName = "SMC";
 
@@ -39,21 +39,19 @@ BLECharacteristic* output;
 volatile uint8_t sendString = 0;
 bool connected = false;
 
+int setScreenText(const char *format, ...);
+
 class MyCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param){
     connected = true;
     
     BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
-    
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 0, 2);
-    M5.Lcd.printf("BLE Keyboard connected");
 
-    Serial.printf("Connection ID %d Peer %02x:%02x:%02x:%02x:%02x:%02x\n", 
-                  param->connect.conn_id, 
+    setScreenText("BLE Keyboard connected\nPeer: %02x:%02x:%02x:%02x:%02x:%02x", 
                   param->connect.remote_bda[0], param->connect.remote_bda[1], param->connect.remote_bda[2],
                   param->connect.remote_bda[3], param->connect.remote_bda[4], param->connect.remote_bda[5]);
-                  
+    Serial.printf("Connection id %d", param->connect.conn_id);
+
     Serial.printf("BLE keyboard connected, count %d\n", pServer->getConnectedCount());
     for (auto const &it : pServer->getPeerDevices(false)) {
       Serial.printf("Server Connection Id %d Data 0x%08x\n", it.first, it.second);
@@ -67,9 +65,7 @@ class MyCallbacks : public BLEServerCallbacks {
 
   void onDisconnect(BLEServer* pServer){
     connected = false;
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 0, 2);
-    M5.Lcd.printf("BLE Keyboard DISCONNECTED");
+    setScreenText("BLE Keyboard DISCONNECTED");
     BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
     desc->setNotifications(false);
   }
@@ -93,8 +89,8 @@ void taskServer(void*){
   BLEDevice::init(deviceName);
 
   esp_bd_addr_t *pLocalAddr = BLEDevice::getAddress().getNative();
-  
-  Serial.printf("BLE initialized, address %02x:%02x:%02x:%02x:%02x:%02x\n", 
+
+  setScreenText("BLE initialized\nLocal %02x:%02x:%02x:%02x:%02x:%02x\nWaiting", 
                 (*pLocalAddr)[0], (*pLocalAddr)[1], (*pLocalAddr)[2], 
                 (*pLocalAddr)[3], (*pLocalAddr)[4], (*pLocalAddr)[5]);
                 
@@ -112,8 +108,12 @@ void taskServer(void*){
   hid->manufacturer()->setValue(name);
 
   // Plug and Play IDs, Vendor ID source (0x02 = USB Implementers forum), 
-  // Vendor ID 0xe502 = Unknown, Product ID 0xa111, Product Version = 0x0210
+  // Vendor ID 0xe502 little endian = 0x2e5 = Unknown, 
+  // Product ID 0xa111 little endian = 0x11a1, 
+  // Product Version 0x0210 little endian = 0x1002
   hid->pnp(0x02, 0xe502, 0xa111, 0x0210);
+
+  // Country = 0x00, Flags = 0x02
   hid->hidInfo(0x00,0x02);
 
   BLESecurity *pSecurity = new BLESecurity();
@@ -166,7 +166,43 @@ void taskServer(void*){
 
   ESP_LOGD(LOG_TAG, "Advertising started!");
   delay(portMAX_DELAY);  
-};
+}
+
+int setScreenText(const char *format, ...) {
+  char loc_buf[64];
+  char * temp = loc_buf;
+  va_list arg;
+  va_list copy;
+  va_start(arg, format);
+  va_copy(copy, arg);
+  int len = vsnprintf(temp, sizeof(loc_buf), format, copy);
+  va_end(copy);
+  if(len < 0) {
+      va_end(arg);
+      return 0;
+  };
+  if(len >= sizeof(loc_buf)){
+      temp = (char*) malloc(len+1);
+      if(temp == NULL) {
+          va_end(arg);
+          return 0;
+      }
+      len = vsnprintf(temp, len+1, format, arg);
+  }
+  va_end(arg);
+  
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setCursor(0, 0, 2);
+  len = M5.Lcd.print((const char *) temp);
+
+  Serial.print("Screen: ");
+  Serial.print(temp);
+  
+  if(temp != loc_buf){
+      free(temp);
+  }
+  return len;  
+}
 
 void setup() {
   Serial.begin(115200);
@@ -177,10 +213,8 @@ void setup() {
   M5.begin(true, true, false);
 
   M5.Lcd.setRotation(3);
-  
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0, 0, 2);
-  M5.Lcd.printf("Initializing BLE Keyboard...");
+
+  setScreenText("Initializing BLE Keyboard...");
   
 #if 0
   pinMode(12, INPUT_PULLDOWN);
