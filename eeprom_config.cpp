@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
+#include "SerialUtil.h":
 #include "eeprom_config.h"
 
 WATCH_TYPE pinsToWatch = 0; 
@@ -122,4 +123,152 @@ void updateKey(uint8_t pin, uint8_t stroke, uint8_t modifier, uint8_t code) {
 #ifdef ESP32
   EEPROM.commit();
 #endif
+}
+
+int readModifierAndCode(uint8_t *modifier_p, uint8_t *code_p, char *terminator_p) {
+  int rc;
+  
+  rc = serialTimedReadNum(modifier_p, terminator_p, true);
+  if (rc) {
+    Serial.println("Timeout reading modifier");
+    return -1;
+  } else if (*terminator_p != ' ') {
+    Serial.println("No space after modifier");
+    return -1;      
+  }
+
+  rc = serialTimedReadNum(code_p, terminator_p, true);
+  if (rc) {
+    Serial.println("Timeout reading keycode");
+    return -1;
+  } else if (!(*terminator_p == ' ' || *terminator_p == ';')) {
+    Serial.println("No terminator after keycode");
+    return -1;      
+  }  
+
+  return 0;
+}
+
+int readPinConfigUpdateFromSerial() {
+  uint8_t pin;
+  int rc;
+  char terminator;
+  
+  if (rc = serialTimedReadNum(&pin, &terminator, false) || terminator != ' ') {
+    Serial.println("Invalid pin"); 
+    return -1; 
+  }
+
+  if (pin < 0 || pin < FIRST_INPUT_PIN || pin > LAST_INPUT_PIN) {
+    Serial.print("Invalid input pin ");
+    Serial.print(pin);
+    Serial.println("");
+    return -1;
+  }
+
+  Serial.print("Updating pin ");
+  Serial.println(pin);
+
+  uint8_t keystrokeIdx = 0;
+  while (keystrokeIdx < MAX_KEYSTROKES - 1) {
+    uint8_t modifier, keycode;
+
+    rc = serialTimedSkipWhitespace(&terminator);
+    if (rc) {
+      Serial.println("Timeout reading key");
+      return -1;
+    } else if (terminator == ';') {
+      Serial.read();
+      break;      
+    }
+
+    rc = readModifierAndCode(&modifier, &keycode, &terminator);
+
+    Serial.print("Read modifier ");
+    serialPrintHex(modifier);
+    Serial.print(" ");
+
+    Serial.print("keycode ");
+    serialPrintHex(keycode);
+    Serial.println();
+
+    updateKey(pin, keystrokeIdx, modifier, keycode);
+    keystrokeIdx++;   
+  }  
+
+  if (keystrokeIdx < MAX_KEYSTROKES - 1)
+    updateKey(pin, keystrokeIdx, 0, 0);  
+
+  Serial.println("Updated keycode, reloaded config");
+  readAndProcessConfig();
+  return 0;
+}
+
+int readSerialKeysAndSend(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2)) {
+  uint8_t pin;
+  int rc;
+  char terminator;
+
+  while (true) {
+    uint8_t modifier, keycode;
+
+    rc = serialTimedSkipWhitespace(&terminator);
+    if (rc) {
+      Serial.println("Timeout reading key");
+      return -1;
+    } else if (terminator == ';') {
+      Serial.read();
+      break;      
+    }
+
+    rc = readModifierAndCode(&modifier, &keycode, &terminator);
+
+    Serial.print("Read modifier ");
+    serialPrintHex(modifier);
+    Serial.print(" ");
+
+    Serial.print("keycode ");
+    serialPrintHex(keycode);
+    Serial.println();
+
+    sendKey(modifier, keycode, 0x0);
+  }  
+
+  return 0;
+}
+
+void checkPinsAndSend(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2)) {
+  for (uint8_t pin = FIRST_INPUT_PIN; pin <= LAST_INPUT_PIN; pin++) {
+    if (!WATCH_PIN(pin))
+      continue;
+
+    uint8_t pinChanged, pinValue;
+    pinChanged = checkPinChange(pin, &pinValue);
+
+    if (!pinChanged)
+      continue;
+
+    Serial.print("Pin ");
+    Serial.print(pin);
+    Serial.print(" change: ");
+    Serial.println(pinValue);
+
+    if (!pinValue) {
+      for (uint8_t keystrokeIdx = 0; keystrokeIdx < MAX_KEYSTROKES; keystrokeIdx++) {
+        uint8_t modifier = GET_KEY_MODIFIER(pin, keystrokeIdx);
+        uint8_t code     = GET_KEY_CODE(pin, keystrokeIdx);
+
+        if (!code)
+          break;
+
+        Serial.print("Send key ");
+        serialPrintHex(modifier);
+        Serial.print(" ");
+        serialPrintHex(code);
+        Serial.println("");
+
+        sendKey(modifier, code, 0x0);
+      }
+    }
+  }  
 }

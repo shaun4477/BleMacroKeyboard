@@ -8,7 +8,6 @@
 
 #include <BLEDevice.h>
 #include "BLEHIDDevice.h"
-#include "HIDTypes.h"
 #include "HIDKeyboardTypes.h"
 #include "M5Util.h"
 #include "BLEKeyboard.h"
@@ -101,7 +100,7 @@ void loop() {
   }
 
   /* Check if any pins should trigger keys to be sent */
-  checkPins();
+  checkPinsAndSend(sendKey);
 
 #ifdef ESP32
   if (Serial.available()) 
@@ -111,115 +110,9 @@ void loop() {
   delay(50);
 }
 
-void checkPins() {
-  for (uint8_t pin = FIRST_INPUT_PIN; pin <= LAST_INPUT_PIN; pin++) {
-    if (!WATCH_PIN(pin))
-      continue;
-
-    uint8_t pinChanged, pinValue;
-    pinChanged = checkPinChange(pin, &pinValue);
-
-    if (!pinChanged)
-      continue;
-
-    Serial.print("Pin ");
-    Serial.print(pin);
-    Serial.print(" change: ");
-    Serial.println(pinValue);
-
-    if (!pinValue) {
-      for (uint8_t keystrokeIdx = 0; keystrokeIdx < MAX_KEYSTROKES; keystrokeIdx++) {
-        uint8_t modifier = GET_KEY_MODIFIER(pin, keystrokeIdx);
-        uint8_t code     = GET_KEY_CODE(pin, keystrokeIdx);
-
-        if (!code)
-          break;
-
-        Serial.print("Send key ");
-        serialPrintHex(modifier);
-        Serial.print(" ");
-        serialPrintHex(code);
-        Serial.println("");
-
-        sendKey(modifier, code, 0x0);
-      }
-    }
-  }  
-}
 
 IRAM_ATTR void clickHome(){
   sendString = 1;
-}
-
-int readPinConfigUpdateFromSerial() {
-  uint8_t pin;
-  int rc;
-  char terminator;
-  
-  if (rc = serialTimedReadNum(&pin, &terminator, false) || terminator != ' ') {
-    Serial.println("Invalid pin"); 
-    return -1; 
-  }
-
-  if (pin < 0 || pin < FIRST_INPUT_PIN || pin > LAST_INPUT_PIN) {
-    Serial.print("Invalid input pin ");
-    Serial.print(pin);
-    Serial.println("");
-    return -1;
-  }
-
-  Serial.print("Updating pin ");
-  Serial.println(pin);
-
-  uint8_t keystrokeIdx = 0;
-  while (keystrokeIdx < MAX_KEYSTROKES - 1) {
-    uint8_t modifier, keycode;
-
-    rc = serialTimedSkipWhitespace(&terminator);
-    if (rc) {
-      Serial.println("Timeout looking for modifier");
-      return -1;
-    } else if (terminator == ';') {
-      Serial.read();
-      break;      
-    }
-
-    rc = serialTimedReadNum(&modifier, &terminator, true);
-    if (rc) {
-      Serial.println("Timeout reading modifier");
-      return -1;
-    } else if (terminator != ' ') {
-      Serial.println("No space after modifier");
-      return -1;      
-    }
-
-    rc = serialTimedReadNum(&keycode, &terminator, true);
-    if (rc) {
-      Serial.println("Timeout reading keycode");
-      return -1;
-    } else if (!(terminator == ' ' || terminator == ';')) {
-      Serial.println("No terminator after keycode");
-      return -1;      
-    }
-
-    Serial.print("Read modifier ");
-    serialPrintHex(modifier);
-    Serial.print(" ");
-
-    Serial.print("keycode ");
-    serialPrintHex(keycode);
-    Serial.println();
-
-    updateKey(pin, keystrokeIdx, modifier, keycode);
-    keystrokeIdx++;    
-  }  
-
-  if (keystrokeIdx < MAX_KEYSTROKES - 1)
-    updateKey(pin, keystrokeIdx, 0, 0);  
-
-  Serial.println("Updated keycode, reloaded config");
-  readAndProcessConfig();
-  return 0;
 }
 
 void serialEvent() {
@@ -238,6 +131,12 @@ void serialEvent() {
         Serial.println(""); 
         break;
       }
+      case 'S': {
+        // Send keystrokes, reads a string of hex pairs (modifier, 
+        // code) and sends them via HID
+        readSerialKeysAndSend(sendKey);
+        break;
+      }      
       case 'F':
         // Format EEPROM then re-read config
         formatEeprom();

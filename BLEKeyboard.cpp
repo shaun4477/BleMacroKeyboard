@@ -36,8 +36,8 @@ BLECharacteristic* input;
 BLECharacteristic* output;
 
 bool connected = false;
-void (*mainOnConnect)(esp_ble_gatts_cb_param_t *param) = NULL;
 void (*mainOnInitialized)() = NULL;
+void (*mainOnConnect)(esp_ble_gatts_cb_param_t *param) = NULL;
 
 class MyCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param){
@@ -157,10 +157,12 @@ void taskServer(void*){
   hid->setBatteryLevel(7);
 
   ESP_LOGD(LOG_TAG, "Advertising started!");
-  delay(portMAX_DELAY);  
+  
+  if (mainOnInitialized) 
+    mainOnInitialized();  
 
-  if (mainOnInitialized)
-    mainOnInitialized();                
+  // Wait forever
+  delay(portMAX_DELAY);  
 }
 
 bool keyboardConnected() {
@@ -168,8 +170,10 @@ bool keyboardConnected() {
 }
 
 void startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)(esp_ble_gatts_cb_param_t *param)) {
-  mainOnConnect = onConnect_p;
   mainOnInitialized = onInitialized_p;
+  mainOnConnect = onConnect_p;
+  Serial.printf("Starting keyboard task, on init callback %p on connect callback %p\n", mainOnInitialized, mainOnConnect);
+  delay(10);
   xTaskCreate(taskServer, "server", 20000, NULL, 5, NULL);
 }
 

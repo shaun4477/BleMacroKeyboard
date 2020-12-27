@@ -57,5 +57,8 @@ void formatEeprom();
 void readAndProcessConfig();
 uint8_t checkPinChange(uint8_t pin, uint8_t *newValue);
 void updateKey(uint8_t pin, uint8_t stroke, uint8_t modifier, uint8_t code);
+int readPinConfigUpdateFromSerial();
+int readSerialKeysAndSend(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2));
+void checkPinsAndSend(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2));
 
 #endif 
