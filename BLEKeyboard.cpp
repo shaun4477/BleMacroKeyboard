@@ -18,7 +18,7 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include <M5StickC.h>
+#include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
@@ -173,9 +173,20 @@ void startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)(esp_ble_gatts_
   xTaskCreate(taskServer, "server", 20000, NULL, 5, NULL);
 }
 
-void sendKey(uint8_t *msg, int len) {
+void sendMsg(uint8_t *msg, int len) {
   if (connected) {
     input->setValue(msg, len);
     input->notify();  
   }
+}
+
+void sendKey(uint8_t modifier, uint8_t key, uint8_t key2) {
+  // The HID report descriptor defined above has one byte of modifier, 
+  // a reserved byte then up to 6 key codes
+  uint8_t msg[] = {modifier, 0x0, key, key2, 0x0, 0x0, 0x0, 0x0};
+  sendMsg(msg, sizeof(msg));
+
+  // Send the matching key up
+  uint8_t blank[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+  sendMsg(blank, sizeof(blank));  
 }
