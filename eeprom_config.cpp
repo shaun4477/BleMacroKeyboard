@@ -102,17 +102,19 @@ void readAndProcessConfig() {
 
     Serial.printf("Setting pin %d to pull up\n", pin);
     pinMode(pin, INPUT_PULLUP);    
-    pinsToWatch |= 1 << (pin - FIRST_INPUT_PIN);
-    pinsLast |= 1 << (pin - FIRST_INPUT_PIN);
+    pinsToWatch |= (WATCH_TYPE) 1 << (pin - FIRST_INPUT_PIN);
+    pinsLast    |= (WATCH_TYPE) 1 << (pin - FIRST_INPUT_PIN);
   }  
+
+  Serial.printf("Pins to watch %llx\n", pinsToWatch);
 }
 
 uint8_t checkPinChange(uint8_t pin, uint8_t *newValue) {
   uint8_t pinRead = digitalRead(pin);
-  WATCH_TYPE pinNew = pinRead << (pin - FIRST_INPUT_PIN);
-  WATCH_TYPE pinOld = pinsLast & (1 << (pin - FIRST_INPUT_PIN));
+  WATCH_TYPE pinNew = (WATCH_TYPE) pinRead << (pin - FIRST_INPUT_PIN);
+  WATCH_TYPE pinOld = pinsLast & ((WATCH_TYPE) 1 << (pin - FIRST_INPUT_PIN));
 
-  pinsLast = (pinsLast & (~(1 << (pin - FIRST_INPUT_PIN)))) | pinNew;
+  pinsLast = (pinsLast & (~((WATCH_TYPE) 1 << (pin - FIRST_INPUT_PIN)))) | pinNew;
   *newValue = pinRead; 
 
   return pinNew != pinOld;

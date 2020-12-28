@@ -51,8 +51,8 @@ extern WATCH_TYPE pinsLast;
 #define DEFAULT_INPUT_STRING "Hello World!"
 #endif
 
-#define EEPROM_OFFSET(pin) (2 + ((pin - FIRST_INPUT_PIN) * (MAX_KEYSTROKES * 2)))
-#define WATCH_PIN(pin) ((pinsToWatch >> (pin - FIRST_INPUT_PIN)) & 1)
+#define EEPROM_OFFSET(pin)           (2 + ((pin - FIRST_INPUT_PIN) * (MAX_KEYSTROKES * 2)))
+#define WATCH_PIN(pin)               ((pinsToWatch >> (pin - FIRST_INPUT_PIN)) & 1)
 #define GET_KEY_MODIFIER(pin, keyNo) EEPROM.read(EEPROM_OFFSET(pin) + (keyNo * 2));
 #define GET_KEY_CODE(pin, keyNo)     EEPROM.read(EEPROM_OFFSET(pin) + (keyNo * 2) + 1);
 
