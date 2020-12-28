@@ -100,6 +100,7 @@ void readAndProcessConfig() {
     }
     Serial.println("");
 
+    Serial.printf("Setting pin %d to pull up\n", pin);
     pinMode(pin, INPUT_PULLUP);    
     pinsToWatch |= 1 << (pin - FIRST_INPUT_PIN);
     pinsLast |= 1 << (pin - FIRST_INPUT_PIN);

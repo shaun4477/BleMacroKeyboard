@@ -35,7 +35,7 @@ int setScreenText(const char *format, ...) {
   len = M5.Lcd.print((const char *) temp);
 
   Serial.print("Screen: ");
-  Serial.print(temp);
+  Serial.println(temp);
   
   if(temp != loc_buf){
       free(temp);

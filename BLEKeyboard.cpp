@@ -45,10 +45,7 @@ class MyCallbacks : public BLEServerCallbacks {
     
     BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
 
-    if (mainOnConnect)
-      mainOnConnect(param);
-
-    Serial.printf("Connection id %d", param->connect.conn_id);
+    Serial.printf("Connection id %d\n", param->connect.conn_id);
 
     Serial.printf("BLE keyboard connected, count %d\n", pServer->getConnectedCount());
     for (auto const &it : pServer->getPeerDevices(false)) {
@@ -59,6 +56,9 @@ class MyCallbacks : public BLEServerCallbacks {
     }
     
     desc->setNotifications(true);
+
+    if (mainOnConnect)
+      mainOnConnect(param);    
   }
 
   void onDisconnect(BLEServer* pServer){
@@ -84,9 +84,15 @@ class MyCallbacks : public BLEServerCallbacks {
 };
 
 void taskServer(void*){
-  BLEDevice::init(deviceName);
+  Serial.println("Initialize BLE");
 
+  Serial.println("Init device");
+  BLEDevice::init(deviceName);
+  
+  Serial.println("Create BLE server");
   BLEServer *pServer = BLEDevice::createServer();
+
+  Serial.println("Set callbacks");
   pServer->setCallbacks(new MyCallbacks());
   Serial.printf("Created BLE server at 0x%08x\n", pServer);
 

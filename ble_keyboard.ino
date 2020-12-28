@@ -60,9 +60,6 @@ void setup() {
   Serial.printf("Currently charging %d\n", battery_power());
 #endif
 
-  setScreenText("Initializing BLE Keyboard...");
-  startKeyboard(onKeyboardInitialized, onKeyboardConnect);
-  
 #if 0
   pinMode(12, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(12), clickNumLock, CHANGE);   // Num Lock
@@ -75,27 +72,47 @@ void setup() {
   Serial.println(F("Arduino keyboard sender (https://github.com/shaun4477/arduino-uno-r3-usb-keyboard)"));
   readAndProcessConfig();
 
-  // The home button on the M5Stick sends text
+  // The home button on the M5Stick or the left button on the M5Stack sends text
+  Serial.printf("Setting pin to pullup\n");
   pinMode(BUTTON_A_PIN, INPUT_PULLUP);
+  
+  Serial.printf("Attaching interrupt\n");
   attachInterrupt(digitalPinToInterrupt(BUTTON_A_PIN), clickHome, FALLING);
+  Serial.printf("Interrupt attached\n");
+
+  Serial.printf("Monitoring pin %d send string %d\n", BUTTON_A_PIN, sendString);
+
+  // Starting bluetooth will cause a spurious interrupt on PIN 39, 
+  // be sure to ignore it
+  setScreenText("Initializing BLE Keyboard...");
+  startKeyboard(onKeyboardInitialized, onKeyboardConnect);
+  
+  Serial.printf("Setup complete\n");
 }
 
 void loop() {
+
+  if (sendString) {
+    // Ignore any sendString presses until the keyboard is connected, 
+    // this is important since BT power up will cause a spurious interrupt 
+    // on PIN 39 (and possibly others)
+    if (!keyboardConnected())
+      sendString = 0;
+    else {
+      Serial.printf("Sending string, sendString %d\n", sendString);
+      sendString = 0;
+      const char* hello = helloStr;
   
-  if (keyboardConnected() && sendString){
-    Serial.println("Sending string");
-    sendString = 0;
-    const char* hello = helloStr;
-
-    while (*hello){
-      KEYMAP map = keymap[(uint8_t)*hello];
-      Serial.printf("Sending %c with %02x %02x\n", *hello, map.modifier, map.usage);
-
-      // Send HID report for key down
-      uint8_t msg[] = {map.modifier, 0x0, map.usage, 0x0, 0x0, 0x0, 0x0, 0x0};
-      sendKey(map.modifier, map.usage, 0x00);
-      hello++;
-      delay(10);
+      while (*hello){
+        KEYMAP map = keymap[(uint8_t)*hello];
+        Serial.printf("Sending %c with %02x %02x\n", *hello, map.modifier, map.usage);
+  
+        // Send HID report for key down
+        uint8_t msg[] = {map.modifier, 0x0, map.usage, 0x0, 0x0, 0x0, 0x0, 0x0};
+        sendKey(map.modifier, map.usage, 0x00);
+        hello++;
+        delay(10);
+      }    
     }
   }
 
@@ -112,6 +129,7 @@ void loop() {
 
 
 IRAM_ATTR void clickHome(){
+  // Serial.println("CLK");
   sendString = 1;
 }
 
