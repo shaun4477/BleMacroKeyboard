@@ -70,7 +70,7 @@ void setup() {
 #endif
 
   Serial.println(F("Arduino keyboard sender (https://github.com/shaun4477/arduino-uno-r3-usb-keyboard)"));
-  readAndProcessConfig();
+  MacroKeyboard.loadConfig();
 
   // The home button on the M5Stick or the left button on the M5Stack sends text
   Serial.printf("Setting pin to pullup\n");
@@ -85,7 +85,7 @@ void setup() {
   // Starting bluetooth will cause a spurious interrupt on PIN 39, 
   // be sure to ignore it
   setScreenText("Initializing BLE Keyboard...");
-  startKeyboard(onKeyboardInitialized, onKeyboardConnect);
+  MacroKeyboard.startKeyboard(onKeyboardInitialized, onKeyboardConnect);
   
   Serial.printf("Setup complete\n");
 }
@@ -96,7 +96,7 @@ void loop() {
     // Ignore any sendString presses until the keyboard is connected, 
     // this is important since BT power up will cause a spurious interrupt 
     // on PIN 39 (and possibly others)
-    if (!keyboardConnected())
+    if (!MacroKeyboard.keyboardConnected())
       sendString = 0;
     else {
       Serial.printf("Sending string, sendString %d\n", sendString);
@@ -109,7 +109,7 @@ void loop() {
   
         // Send HID report for key down
         uint8_t msg[] = {map.modifier, 0x0, map.usage, 0x0, 0x0, 0x0, 0x0, 0x0};
-        sendKey(map.modifier, map.usage, 0x00);
+        MacroKeyboard.sendKey(map.modifier, map.usage, 0x00);
         hello++;
         delay(10);
       }    
@@ -117,7 +117,7 @@ void loop() {
   }
 
   /* Check if any pins should trigger keys to be sent */
-  checkPinsAndSend(sendKey);
+  MacroKeyboard.checkPins();
 
 #ifdef ESP32
   if (Serial.available()) 
@@ -126,7 +126,6 @@ void loop() {
 
   delay(50);
 }
-
 
 IRAM_ATTR void clickHome(){
   // Serial.println("CLK");
@@ -145,26 +144,26 @@ void serialEvent() {
         // Send a keystroke, the actual key data should never 
         // appear in the console since it will become a HID key
         Serial.print("key:");       // print the string "key:"
-        sendKey(0x00, 0x04, 0x00);
+        MacroKeyboard.sendKey(0x00, 0x04, 0x00);
         Serial.println(""); 
         break;
       }
       case 'S': {
         // Send keystrokes, reads a string of hex pairs (modifier, 
         // code) and sends them via HID
-        readSerialKeysAndSend(sendKey);
+        MacroKeyboard.readSerialKeysAndSend();
         break;
       }      
       case 'F':
         // Format EEPROM then re-read config
-        formatEeprom();
+        MacroKeyboard.resetConfig();
       case 'l':
         // Read and list config
-        readAndProcessConfig();
+        MacroKeyboard.loadConfig();
         break;
       case 'u':
         // Update a pin to trigger some keystrokes
-        readPinConfigUpdateFromSerial();
+        MacroKeyboard.readSerialPinConfigUpdate();
         break;        
       case '\n':
       case '\r':

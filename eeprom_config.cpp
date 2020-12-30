@@ -207,7 +207,7 @@ int readPinConfigUpdateFromSerial() {
   return 0;
 }
 
-int readSerialKeysAndSend(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2)) {
+int readSerialKeysAndCallback(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2)) {
   uint8_t pin;
   int rc;
   char terminator;
@@ -240,7 +240,7 @@ int readSerialKeysAndSend(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t
   return 0;
 }
 
-void checkPinsAndSend(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2)) {
+void checkPinsAndCallback(void (*sendKey)(uint8_t modifier, uint8_t key, uint8_t key2)) {
   for (uint8_t pin = FIRST_INPUT_PIN; pin <= LAST_INPUT_PIN; pin++) {
     if (!WATCH_PIN(pin))
       continue;

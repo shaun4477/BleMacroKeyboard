@@ -26,18 +26,21 @@
 #include "BLEHIDDevice.h"
 #include "HIDTypes.h"
 #include "HIDKeyboardTypes.h"
-#include <driver/adc.h>
+#include "eeprom_config.h"
+#include "BLEKeyboard.h"
 
 const char *deviceName = "Meeting Keyboard";
 const char *manufacturerName = "SMC";
 
-BLEHIDDevice* hid;
-BLECharacteristic* input;
-BLECharacteristic* output;
+static BLEHIDDevice* hid;
+static BLECharacteristic* input;
+static BLECharacteristic* output;
 
-bool connected = false;
-void (*mainOnInitialized)() = NULL;
-void (*mainOnConnect)(esp_ble_gatts_cb_param_t *param) = NULL;
+static bool connected = false;
+static void (*mainOnInitialized)() = NULL;
+static void (*mainOnConnect)(esp_ble_gatts_cb_param_t *param) = NULL;
+
+BleMacroKeyboard MacroKeyboard;
 
 class MyCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param){
@@ -171,11 +174,14 @@ void taskServer(void*){
   delay(portMAX_DELAY);  
 }
 
-bool keyboardConnected() {
+BleMacroKeyboard::BleMacroKeyboard() {
+}
+
+bool BleMacroKeyboard::keyboardConnected() {
   return connected;
 }
 
-void startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)(esp_ble_gatts_cb_param_t *param)) {
+void BleMacroKeyboard::startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)(esp_ble_gatts_cb_param_t *param)) {
   mainOnInitialized = onInitialized_p;
   mainOnConnect = onConnect_p;
   Serial.printf("Starting keyboard task, on init callback %p on connect callback %p\n", mainOnInitialized, mainOnConnect);
@@ -183,20 +189,48 @@ void startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)(esp_ble_gatts_
   xTaskCreate(taskServer, "server", 20000, NULL, 5, NULL);
 }
 
-void sendMsg(uint8_t *msg, int len) {
+static void directSendMsg(uint8_t *msg, int len) {
   if (connected) {
     input->setValue(msg, len);
     input->notify();  
-  }
+  }  
 }
 
-void sendKey(uint8_t modifier, uint8_t key, uint8_t key2) {
+static void directSendKey(uint8_t modifier, uint8_t key, uint8_t key2) {
   // The HID report descriptor defined above has one byte of modifier, 
   // a reserved byte then up to 6 key codes
   uint8_t msg[] = {modifier, 0x0, key, key2, 0x0, 0x0, 0x0, 0x0};
-  sendMsg(msg, sizeof(msg));
+  directSendMsg(msg, sizeof(msg));
 
   // Send the matching key up
   uint8_t blank[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-  sendMsg(blank, sizeof(blank));  
+  directSendMsg(blank, sizeof(blank));    
+}
+
+void BleMacroKeyboard::sendMsg(uint8_t *msg, int len) {
+  directSendMsg(msg, len);
+}
+
+void BleMacroKeyboard::sendKey(uint8_t modifier, uint8_t key, uint8_t key2) {
+  directSendKey(modifier, key, key2);
+}
+
+void BleMacroKeyboard::checkPins() {
+  checkPinsAndCallback(directSendKey);
+}
+
+void BleMacroKeyboard::readSerialKeysAndSend() {
+  readSerialKeysAndCallback(directSendKey);
+}
+
+void BleMacroKeyboard::resetConfig() {
+  formatEeprom();
+}
+
+void BleMacroKeyboard::loadConfig() {
+  readAndProcessConfig();
+}
+
+void BleMacroKeyboard::readSerialPinConfigUpdate() {
+  readPinConfigUpdateFromSerial();
 }
