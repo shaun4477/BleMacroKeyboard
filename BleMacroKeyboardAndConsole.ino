@@ -1,4 +1,4 @@
-AaBbCcDd#ifdef ARDUINO_M5Stack_Core_ESP32
+#ifdef ARDUINO_M5Stack_Core_ESP32
 #include <M5Stack.h>
 #elif defined(ARDUINO_M5Stick_C)
 #include <M5StickC.h>
