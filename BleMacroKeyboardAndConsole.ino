@@ -1,4 +1,4 @@
-#ifdef ARDUINO_M5Stack_Core_ESP32
+AaBbCcDd#ifdef ARDUINO_M5Stack_Core_ESP32
 #include <M5Stack.h>
 #elif defined(ARDUINO_M5Stick_C)
 #include <M5StickC.h>
@@ -6,12 +6,9 @@
 #error "This code works on m5stick-c or m5stack core"
 #endif
 
-#include <BLEDevice.h>
-#include "BLEHIDDevice.h"
 #include "HIDKeyboardTypes.h"
 #include "M5Util.h"
 #include "BleMacroKeyboard.h"
-#include "SerialUtil.h"
 #include "GvmLightControl.h"
 
 static volatile uint8_t sendString = 0;
