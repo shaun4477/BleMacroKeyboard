@@ -14,10 +14,11 @@
 static volatile uint8_t sendString = 0;
 const char *helloStr = "AaBbCcDd";
 
-void onKeyboardConnect(esp_ble_gatts_cb_param_t *param) {
+void onKeyboardConnect() {
+  uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
   setScreenText("BLE Keyboard connected\nPeer: %02x:%02x:%02x:%02x:%02x:%02x",
-                param->connect.remote_bda[0], param->connect.remote_bda[1], param->connect.remote_bda[2],
-                param->connect.remote_bda[3], param->connect.remote_bda[4], param->connect.remote_bda[5]);    
+                peerAddress[0], peerAddress[1], peerAddress[2],
+                peerAddress[3], peerAddress[4], peerAddress[5]);    
 }
 
 void onKeyboardInitialized() {

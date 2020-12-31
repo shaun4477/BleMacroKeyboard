@@ -37,7 +37,8 @@ static BLECharacteristic* output;
 
 static bool connected = false;
 static void (*mainOnInitialized)() = NULL;
-static void (*mainOnConnect)(esp_ble_gatts_cb_param_t *param) = NULL;
+static void (*mainOnConnect)() = NULL;
+static uint8_t peerAddress[8] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 
 BleKeyboardHandler BleKeyboard;
 
@@ -50,17 +51,22 @@ class MyCallbacks : public BLEServerCallbacks {
     Serial.printf("Connection id %d\n", param->connect.conn_id);
 
     Serial.printf("BLE keyboard connected, count %d\n", pServer->getConnectedCount());
+
+    /* 
     for (auto const &it : pServer->getPeerDevices(false)) {
       Serial.printf("Server Connection Id %d Data 0x%08x\n", it.first, it.second);
     }
     for (auto const &it : pServer->getPeerDevices(true)) {
       Serial.printf("Client Connection Id %d Data 0x%08x\n", it.first, it.second);
     }
+    */ 
     
     desc->setNotifications(true);
 
+    memcpy(peerAddress, param->connect.remote_bda, sizeof(peerAddress));
+    
     if (mainOnConnect)
-      mainOnConnect(param);    
+      mainOnConnect();    
   }
 
   void onDisconnect(BLEServer* pServer){
@@ -176,11 +182,15 @@ void taskServer(void*){
 BleKeyboardHandler::BleKeyboardHandler() {
 }
 
+uint8_t *BleKeyboardHandler::getPeerAddress() {
+  return peerAddress;
+}
+
 bool BleKeyboardHandler::keyboardConnected() {
   return connected;
 }
 
-void BleKeyboardHandler::startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)(esp_ble_gatts_cb_param_t *param)) {
+void BleKeyboardHandler::startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)()) {
   mainOnInitialized = onInitialized_p;
   mainOnConnect = onConnect_p;
   Serial.printf("Starting keyboard task, on init callback %p on connect callback %p\n", mainOnInitialized, mainOnConnect);
