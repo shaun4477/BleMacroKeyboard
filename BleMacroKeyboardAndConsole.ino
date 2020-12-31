@@ -10,9 +10,9 @@
 #include "BLEHIDDevice.h"
 #include "HIDKeyboardTypes.h"
 #include "M5Util.h"
-#include "BLEKeyboard.h"
-#include "eeprom_config.h"
+#include "BleMacroKeyboard.h"
 #include "SerialUtil.h"
+#include "GvmLightControl.h"
 
 static volatile uint8_t sendString = 0;
 const char *helloStr = "AaBbCcDd";
@@ -70,7 +70,7 @@ void setup() {
 #endif
 
   Serial.println(F("Arduino keyboard sender (https://github.com/shaun4477/arduino-uno-r3-usb-keyboard)"));
-  MacroKeyboard.loadConfig();
+  BleMacroKeyboard.loadConfig();
 
   // The home button on the M5Stick or the left button on the M5Stack sends text
   Serial.printf("Setting pin to pullup\n");
@@ -85,7 +85,11 @@ void setup() {
   // Starting bluetooth will cause a spurious interrupt on PIN 39, 
   // be sure to ignore it
   setScreenText("Initializing BLE Keyboard...");
-  MacroKeyboard.startKeyboard(onKeyboardInitialized, onKeyboardConnect);
+  BleMacroKeyboard.startKeyboard(onKeyboardInitialized, onKeyboardConnect);
+
+  GVM.debugOn();
+  int networks_found;
+  GVM.find_and_join_light_wifi(&networks_found);
   
   Serial.printf("Setup complete\n");
 }
@@ -96,9 +100,11 @@ void loop() {
     // Ignore any sendString presses until the keyboard is connected, 
     // this is important since BT power up will cause a spurious interrupt 
     // on PIN 39 (and possibly others)
-    if (!MacroKeyboard.keyboardConnected())
+    if (!BleMacroKeyboard.keyboardConnected())
       sendString = 0;
     else {
+      GVM.setOnOff(GVM.getOnOff() + 1);
+      
       Serial.printf("Sending string, sendString %d\n", sendString);
       sendString = 0;
       const char* hello = helloStr;
@@ -109,7 +115,7 @@ void loop() {
   
         // Send HID report for key down
         uint8_t msg[] = {map.modifier, 0x0, map.usage, 0x0, 0x0, 0x0, 0x0, 0x0};
-        MacroKeyboard.sendKey(map.modifier, map.usage, 0x00);
+        BleMacroKeyboard.sendKey(map.modifier, map.usage, 0x00);
         hello++;
         delay(10);
       }    
@@ -117,7 +123,7 @@ void loop() {
   }
 
   /* Check if any pins should trigger keys to be sent */
-  MacroKeyboard.checkPins();
+  BleMacroKeyboard.checkPins();
 
 #ifdef ESP32
   if (Serial.available()) 
@@ -144,26 +150,26 @@ void serialEvent() {
         // Send a keystroke, the actual key data should never 
         // appear in the console since it will become a HID key
         Serial.print("key:");       // print the string "key:"
-        MacroKeyboard.sendKey(0x00, 0x04, 0x00);
+        BleMacroKeyboard.sendKey(0x00, 0x04, 0x00);
         Serial.println(""); 
         break;
       }
       case 'S': {
         // Send keystrokes, reads a string of hex pairs (modifier, 
         // code) and sends them via HID
-        MacroKeyboard.readSerialKeysAndSend();
+        BleMacroKeyboard.readSerialKeysAndSend();
         break;
       }      
       case 'F':
         // Format EEPROM then re-read config
-        MacroKeyboard.resetConfig();
+        BleMacroKeyboard.resetConfig();
       case 'l':
         // Read and list config
-        MacroKeyboard.loadConfig();
+        BleMacroKeyboard.loadConfig();
         break;
       case 'u':
         // Update a pin to trigger some keystrokes
-        MacroKeyboard.readSerialPinConfigUpdate();
+        BleMacroKeyboard.readSerialPinConfigUpdate();
         break;        
       case '\n':
       case '\r':

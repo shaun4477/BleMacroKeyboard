@@ -1,24 +1,23 @@
-#ifndef BLEKeyboard_h
-#define BLEKeyboard_h
+#ifndef BleKeyboard_h
+#define BleKeyboard_h
 
-class BleMacroKeyboard {
+#include <BLEDevice.h>
+
+class BleKeyboardHandler {
   public:
-    BleMacroKeyboard();
+    BleKeyboardHandler();
     void startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)(esp_ble_gatts_cb_param_t *param));
     bool keyboardConnected();  
-
-    void loadConfig();
-    void resetConfig();
-    void checkPins();
-
     void sendKey(uint8_t modifier, uint8_t key, uint8_t key2);
-    void readSerialKeysAndSend();
-    void readSerialPinConfigUpdate();
+
+  protected:
+    static void directSendKey(uint8_t modifier, uint8_t key, uint8_t key2);
+    static void directSendMsg(uint8_t *msg, int len);
 
   private:
     void sendMsg(uint8_t *msg, int len);
 };
 
-extern BleMacroKeyboard MacroKeyboard;
+extern BleKeyboardHandler BleKeyboard;
 
 #endif
