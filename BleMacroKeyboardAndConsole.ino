@@ -131,9 +131,20 @@ void update_screen_status() {
 
   switch (screen_mode) {
     case -1:
-      o.printf("BS: %s\n", WiFi.BSSIDstr().c_str());
+      o.printf("BLE: ");
+      if (BleMacroKeyboard.keyboardConnected()) {
+        uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
+        o.printf("%02x:%02x:%02x:%02x:%02x:%02x",
+                 peerAddress[0], peerAddress[1], peerAddress[2],
+                 peerAddress[3], peerAddress[4], peerAddress[5]);    
+      }
+      else 
+        o.printf("Waiting");
+      o.printf("\n");
+        
+      o.printf("Light: %s\n", WiFi.BSSIDstr().c_str());
       if (light_status.on_off != -1) 
-        o.printf("Light On %d\n", light_status.on_off);
+        o.printf("On %d ", light_status.on_off);
       if (light_status.hue != -1) 
         o.printf("Hue %d ", light_status.hue * 5);
       if (light_status.brightness != -1) 
