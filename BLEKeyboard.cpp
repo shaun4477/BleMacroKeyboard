@@ -225,3 +225,11 @@ void BleKeyboardHandler::sendMsg(uint8_t *msg, int len) {
 void BleKeyboardHandler::sendKey(uint8_t modifier, uint8_t key, uint8_t key2) {
   BleKeyboardHandler::directSendKey(modifier, key, key2);
 }
+
+void BleKeyboardHandler::sendString(char *str) {
+  while (*str) {
+    KEYMAP map = keymap[(uint8_t)*str];
+    sendKey(map.modifier, map.usage, 0x0);
+    str++;
+  }
+}

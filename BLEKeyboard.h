@@ -10,7 +10,7 @@ class BleKeyboardHandler {
     bool keyboardConnected();  
     uint8_t *getPeerAddress();
     void sendKey(uint8_t modifier, uint8_t key, uint8_t key2);
-    
+    void sendString(char *str);
 
   protected:
     static void directSendKey(uint8_t modifier, uint8_t key, uint8_t key2);

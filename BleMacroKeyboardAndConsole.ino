@@ -21,9 +21,27 @@ unsigned long last_button_millis = 0;
 // #define INACTIVE_OFF_WHEN_PLUGGED_IN 1     // Whether to do inactive off when plugged in
 #define INACTIVE_OFF_WHEN_PLUGGED_IN 0
 
+#define MODE_SUMMARY        -1
+#define MODE_SET_ON_OFF      0
+#define MODE_SET_CHANNEL     1
+#define MODE_SET_HUE         2
+#define MODE_SET_BRIGHTNESS  3
+#define MODE_SET_CCT         4
+#define MODE_SET_SATURATION  5
+#define MODE_KEYBOARD_TEST   6
+
+const int8_t mode_set[] = { MODE_SUMMARY, 
+                            MODE_KEYBOARD_TEST,
+                            MODE_SET_ON_OFF, 
+                            // MODE_SET_CHANNEL, 
+                            // MODE_SET_HUE, 
+                            MODE_SET_BRIGHTNESS, 
+                            MODE_SET_CCT, 
+                            // MODE_SET_SATURATION 
+                            };
+
 static void onWiFiConnectAttempt(uint8_t *bssid, int attempt) {
-  M5.Lcd.setCursor(0, 0, 2);
-  M5.Lcd.printf("Trying\nBSSID %02x:%02x:%02x:%02x:%02x:%02x\nAttempt %d\n",
+  setScreenText("Trying\nBSSID %02x:%02x:%02x:%02x:%02x:%02x\nAttempt %d\n",
                 bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
                 attempt);
 }
@@ -114,7 +132,7 @@ void setup() {
   Serial.printf("Setup complete\n");
 }
 
-int screen_mode = -1;
+int screen_mode = 0;
 
 float getBatteryLevel() {
 #ifdef ARDUINO_M5Stack_Core_ESP32
@@ -129,8 +147,8 @@ void update_screen_status() {
   static String lastUpdate;
   LightStatus light_status = GVM.getLightStatus();
 
-  switch (screen_mode) {
-    case -1:
+  switch (mode_set[screen_mode]) {
+    case MODE_SUMMARY:
       o.printf("BLE: ");
       if (BleMacroKeyboard.keyboardConnected()) {
         uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
@@ -157,36 +175,55 @@ void update_screen_status() {
       o.println(); 
       o.printf("Battery %0.1f %%\n", getBatteryLevel() * 100);
       break;
-    case LIGHT_VAR_ON_OFF:   
+    case MODE_SET_ON_OFF:   
       if (light_status.on_off != -1) 
         o.printf("Light On\n%d", light_status.on_off);
       break;
-    case LIGHT_VAR_CHANNEL:
+    case MODE_SET_CHANNEL:
       if (light_status.channel != -1) 
         o.printf("Channel\n%d", light_status.channel - 1);
       break;    
-    case LIGHT_VAR_BRIGHTNESS:
+    case MODE_SET_BRIGHTNESS:
       if (light_status.brightness != -1) 
         o.printf("Brightness\n%d%%", light_status.brightness);
       break;    
-    case LIGHT_VAR_CCT:
+    case MODE_SET_CCT:
       if (light_status.cct != -1) 
         o.printf("CCT\n%d", light_status.cct * 100);
       break;    
-    case LIGHT_VAR_HUE:
+    case MODE_SET_HUE:
       if (light_status.hue != -1) 
         o.printf("Hue\n%d", light_status.hue * 5);
       break;    
-    case LIGHT_VAR_SATURATION: 
+    case MODE_SET_SATURATION: 
       if (light_status.saturation != -1) 
         o.printf("Saturation\n%d%%", light_status.saturation);
       break;    
+    case MODE_KEYBOARD_TEST: {
+      o.printf("BLE Keyboard\n");
+      esp_bd_addr_t *pLocalAddr = BLEDevice::getAddress().getNative();
+    
+      o.printf("Local:  %02x:%02x:%02x:%02x:%02x:%02x\n",
+               (*pLocalAddr)[0], (*pLocalAddr)[1], (*pLocalAddr)[2],
+               (*pLocalAddr)[3], (*pLocalAddr)[4], (*pLocalAddr)[5]);
+
+      o.printf("Remote: ");
+      if (BleMacroKeyboard.keyboardConnected()) {
+        uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
+        o.printf("%02x:%02x:%02x:%02x:%02x:%02x",
+                 peerAddress[0], peerAddress[1], peerAddress[2],
+                 peerAddress[3], peerAddress[4], peerAddress[5]);    
+      }
+      else 
+        o.printf("Waiting");
+      o.printf("\n");      
+    }
   }
 
   if (lastUpdate != o) {
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(0, 0, 2);
-    M5.Lcd.setTextFont(screen_mode == -1 ? 2 : 4);
+    M5.Lcd.setTextFont(mode_set[screen_mode] == MODE_SUMMARY || mode_set[screen_mode] == MODE_KEYBOARD_TEST ? 2 : 4);
     M5.Lcd.print(o);    
   }
   
@@ -303,7 +340,7 @@ void loop() {
   if (up_pressed()) {
     button_pressed = 1;
     Serial.println("Side button pressed");
-    if (screen_mode == -1) 
+    if (mode_set[screen_mode] == MODE_SUMMARY) 
       GVM.send_hello_msg();
   }
 
@@ -312,30 +349,36 @@ void loop() {
     if (!button_screen_on()) {
       int change = button_pressed;
       if (button_pressed == 0) {
-        screen_mode++;
-        if (screen_mode > 5)
-          screen_mode = -1;
+        screen_mode = screen_mode + 1 >= (sizeof(mode_set) / sizeof(mode_set[0])) ? 0 : screen_mode + 1;
+        Serial.printf("New mode %d == %d\n", screen_mode, mode_set[screen_mode]);
         update_screen_status();          
-      } else if (change && screen_mode != -1) {
-        int8_t newVal;
-        switch (screen_mode) {
-          case LIGHT_VAR_ON_OFF:  
+      } else if (change && mode_set[screen_mode] != MODE_SUMMARY) {
+        switch (mode_set[screen_mode]) {
+          case MODE_SET_ON_OFF:  
             GVM.setOnOff(GVM.getOnOff() + change); 
             break;
-          case LIGHT_VAR_CHANNEL:   
+          case MODE_SET_CHANNEL:   
             GVM.setChannel(GVM.getChannel() + change); 
             break;
-          case LIGHT_VAR_BRIGHTNESS:
+          case MODE_SET_BRIGHTNESS:
             GVM.setBrightness(GVM.getBrightness() + change); 
             break;    
-          case LIGHT_VAR_CCT:
+          case MODE_SET_CCT:
             GVM.setCct(GVM.getCct() + change); 
             break;    
-          case LIGHT_VAR_HUE:
+          case MODE_SET_HUE:
             GVM.setHue(GVM.getHue() + change);
             break;    
-          case LIGHT_VAR_SATURATION: 
+          case MODE_SET_SATURATION: 
             GVM.setSaturation(GVM.getSaturation() + change);
+            break;          
+          case MODE_KEYBOARD_TEST:             
+            if (change == -1) {
+              // Send 'Hello'
+              BleMacroKeyboard.sendString("Hello");
+            } else if (change == 1) {
+              BleMacroKeyboard.sendString("World");
+            }
             break;          
         }
         update_screen_status();
