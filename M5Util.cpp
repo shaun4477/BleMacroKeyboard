@@ -42,3 +42,71 @@ int setScreenText(const char *format, ...) {
   }
   return len;  
 }
+
+
+void screen_off() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  M5.Lcd.setBrightness(0);
+#else
+  M5.Axp.SetLDO2(false);  
+#endif
+}
+
+void screen_on() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  M5.Lcd.setBrightness(255);
+#else  
+  // Turn on tft backlight voltage output
+  M5.Axp.SetLDO2(true);  
+#endif
+}
+
+int down_pressed() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  return M5.BtnA.wasPressed();
+#else
+  // 0x01 long press(1s), 0x02 short press
+  return M5.Axp.GetBtnPress() == 0x02;
+#endif  
+}
+
+int up_pressed() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  return M5.BtnC.wasPressed();
+#else
+  // 0x01 long press(1s), 0x02 short press
+  return M5.BtnB.wasPressed();
+#endif    
+}
+
+int home_pressed() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  return M5.BtnB.wasPressed();
+#else
+  return M5.BtnA.wasPressed();
+#endif
+}
+
+int battery_power() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  return !M5.Power.isCharging();
+#else 
+  return !M5.Axp.GetIusbinData();
+#endif  
+}
+
+void power_off() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  M5.Power.powerOFF();
+#else 
+  M5.Axp.PowerOff();
+#endif    
+}
+
+float getBatteryLevel() {
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  return (float) M5.Power.getBatteryLevel() / 100.0f;
+#else  
+  return getStickBatteryLevel(M5.Axp.GetBatVoltage());
+#endif
+}
