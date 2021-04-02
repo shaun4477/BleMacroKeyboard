@@ -35,7 +35,10 @@ static BLEHIDDevice* hid;
 static BLECharacteristic* input;
 static BLECharacteristic* output;
 
+#define ALLOW_MULTI_CONNECT 1
+
 static bool connected = false;
+static int connectedCount = 0;
 static void (*mainOnInitialized)() = NULL;
 static void (*mainOnConnect)() = NULL;
 static uint8_t peerAddress[8] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
@@ -48,8 +51,11 @@ class MyCallbacks : public BLEServerCallbacks {
     
     BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
 
+    connectedCount++;
+    
     Serial.printf("Connection id %d\n", param->connect.conn_id);
 
+    // Connected count is incremented AFTER this callback is invoked
     Serial.printf("BLE keyboard connected, count %d\n", pServer->getConnectedCount());
 
     /* 
@@ -62,18 +68,32 @@ class MyCallbacks : public BLEServerCallbacks {
     */ 
     
     desc->setNotifications(true);
+    
+    Serial.printf("Connection from %02x:%02x:%02x:%02x:%02x:%02x\n",
+                 param->connect.remote_bda[0], param->connect.remote_bda[1], param->connect.remote_bda[2],
+                 param->connect.remote_bda[3], param->connect.remote_bda[4], param->connect.remote_bda[5]);
 
     memcpy(peerAddress, param->connect.remote_bda, sizeof(peerAddress));
     
     if (mainOnConnect)
       mainOnConnect();    
+
+    if (ALLOW_MULTI_CONNECT)
+      BLEDevice::startAdvertising();      
   }
 
   void onDisconnect(BLEServer* pServer){
-    connected = false;
-    Serial.printf("BLE Keyboard DISCONNECTED");
-    BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
-    desc->setNotifications(false);
+    if (pServer->getConnectedCount() == 0)
+      connected = false;
+    
+    Serial.printf("BLE Keyboard DISCONNECTED, clients now %d\n", pServer->getConnectedCount());
+    connectedCount--;
+
+    if (!connected) {
+      BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+      
+      desc->setNotifications(false);
+    }
   }
 };
 
@@ -180,6 +200,7 @@ void taskServer(void*){
 }
 
 BleKeyboardHandler::BleKeyboardHandler() {
+  connectedCount = 0;
 }
 
 uint8_t *BleKeyboardHandler::getPeerAddress() {
@@ -224,6 +245,10 @@ void BleKeyboardHandler::sendMsg(uint8_t *msg, int len) {
 
 void BleKeyboardHandler::sendKey(uint8_t modifier, uint8_t key, uint8_t key2) {
   BleKeyboardHandler::directSendKey(modifier, key, key2);
+}
+
+int BleKeyboardHandler::getConnectedCount() {
+  return connectedCount;
 }
 
 void BleKeyboardHandler::sendString(char *str) {

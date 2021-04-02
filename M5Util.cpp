@@ -7,6 +7,10 @@
 #endif
 #include "M5Util.h"
 
+#ifdef ARDUINO_M5Stick_C
+float getStickBatteryLevel(float voltage);
+#endif
+
 int setScreenText(const char *format, ...) {
   char loc_buf[64];
   char * temp = loc_buf;

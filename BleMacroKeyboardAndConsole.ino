@@ -19,6 +19,7 @@ unsigned long last_button_millis = 0;
 #define INACTIVE_SCREEN_OFF_MILLIS   10000 // Milliseconds since last button press to power down LCD backlight
 #define INACTIVE_POWER_OFF_MILLIS    20000 // Milliseconds since last button press to switch off
 // #define INACTIVE_OFF_WHEN_PLUGGED_IN 1     // Whether to do inactive off when plugged in
+#define INACTIVE_SCREEN_OFF_WHEN_PLUGGED_IN 1
 #define INACTIVE_OFF_WHEN_PLUGGED_IN 0
 
 #define MODE_SUMMARY        -1
@@ -33,10 +34,8 @@ unsigned long last_button_millis = 0;
 const int8_t mode_set[] = { MODE_SUMMARY, 
                             MODE_KEYBOARD_TEST,
                             MODE_SET_ON_OFF, 
-                            // MODE_SET_CHANNEL, 
-                            // MODE_SET_HUE, 
-                            MODE_SET_BRIGHTNESS, 
-                            MODE_SET_CCT, 
+                            // MODE_SET_CHANNEL, MODE_SET_HUE, 
+                            MODE_SET_BRIGHTNESS, MODE_SET_CCT,
                             // MODE_SET_SATURATION 
                             };
 
@@ -65,6 +64,18 @@ void onKeyboardInitialized() {
                 (*pLocalAddr)[3], (*pLocalAddr)[4], (*pLocalAddr)[5]);
 }
 
+void set_screen_text(String newText, int textFont = 2) {
+  static String lastText; 
+  if (newText == lastText)
+    return;
+
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setCursor(0, 0, 2);
+  M5.Lcd.setTextFont(textFont);
+  M5.Lcd.print(newText);
+  lastText = newText;      
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting BLE + GVM Light console...\n");
@@ -78,8 +89,11 @@ void setup() {
   M5.Lcd.setRotation(3);
 #endif
 
+  screen_on();
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setCursor(0, 0, 2);
+
+  setScreenText("Starting BLE + GVM");
 
 #ifdef ARDUINO_M5Stack_Core_ESP32
   M5.Lcd.setTextSize(2); // 15px
@@ -106,9 +120,11 @@ void setup() {
   while (GVM.find_and_join_light_wifi(&networks_found)) {
     if (networks_found) {
       Serial.println("Couldn't connect to any light, trying again");
+      set_screen_text("Couldn't connect to any light, trying again");
       delay(1000);
     } else {
       Serial.println("No lights found, trying again in 20 seconds");
+      set_screen_text("No lights found, trying again in 20 seconds");
       delay(20000);
     }
   }
@@ -131,7 +147,6 @@ int screen_mode = 0;
 
 void update_screen_status() {
   StreamString o;
-  static String lastUpdate;
   LightStatus light_status = GVM.getLightStatus();
 
   switch (mode_set[screen_mode]) {
@@ -163,28 +178,34 @@ void update_screen_status() {
       o.printf("Battery %0.1f %%\n", getBatteryLevel() * 100);
       break;
     case MODE_SET_ON_OFF:   
+      o.printf("Light On\n");
       if (light_status.on_off != -1) 
-        o.printf("Light On\n%d", light_status.on_off);
+        o.printf("%d", light_status.on_off);
       break;
     case MODE_SET_CHANNEL:
+      o.printf("Channel\n");
       if (light_status.channel != -1) 
-        o.printf("Channel\n%d", light_status.channel - 1);
+        o.printf("%d", light_status.channel - 1);
       break;    
     case MODE_SET_BRIGHTNESS:
+      o.printf("Brightness\n");
       if (light_status.brightness != -1) 
-        o.printf("Brightness\n%d%%", light_status.brightness);
+        o.printf("%d%%", light_status.brightness);
       break;    
     case MODE_SET_CCT:
+      o.printf("CCT\n");    
       if (light_status.cct != -1) 
-        o.printf("CCT\n%d", light_status.cct * 100);
+        o.printf("%d", light_status.cct * 100);
       break;    
     case MODE_SET_HUE:
+      o.printf("Hue\n");    
       if (light_status.hue != -1) 
-        o.printf("Hue\n%d", light_status.hue * 5);
+        o.printf("%d", light_status.hue * 5);
       break;    
     case MODE_SET_SATURATION: 
+      o.printf("Saturation\n");    
       if (light_status.saturation != -1) 
-        o.printf("Saturation\n%d%%", light_status.saturation);
+        o.printf("%d%%", light_status.saturation);
       break;    
     case MODE_KEYBOARD_TEST: {
       o.printf("BLE Keyboard\n");
@@ -194,6 +215,7 @@ void update_screen_status() {
                (*pLocalAddr)[0], (*pLocalAddr)[1], (*pLocalAddr)[2],
                (*pLocalAddr)[3], (*pLocalAddr)[4], (*pLocalAddr)[5]);
 
+      o.printf("Connected #: %d\n", BleMacroKeyboard.getConnectedCount());
       o.printf("Remote: ");
       if (BleMacroKeyboard.keyboardConnected()) {
         uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
@@ -207,20 +229,13 @@ void update_screen_status() {
     }
   }
 
-  if (lastUpdate != o) {
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 0, 2);
-    M5.Lcd.setTextFont(mode_set[screen_mode] == MODE_SUMMARY || mode_set[screen_mode] == MODE_KEYBOARD_TEST ? 2 : 4);
-    M5.Lcd.print(o);    
-  }
-  
-  lastUpdate = o;
+  set_screen_text(o, mode_set[screen_mode] == MODE_SUMMARY || mode_set[screen_mode] == MODE_KEYBOARD_TEST ? 2 : 4); 
 }
 
 void test_screen_idle_off() {
   if (millis() - last_button_millis > INACTIVE_SCREEN_OFF_MILLIS && 
       !lcd_off && 
-      (INACTIVE_OFF_WHEN_PLUGGED_IN || battery_power())) {
+      (INACTIVE_SCREEN_OFF_WHEN_PLUGGED_IN || battery_power())) {
     screen_off();
     lcd_off = 1;
     Serial.printf("** Screen off **\nBattery %% is %f\n", getBatteryLevel());
