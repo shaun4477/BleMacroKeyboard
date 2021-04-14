@@ -117,7 +117,9 @@ void setup() {
   GVM.callbackOnStatusUpdated(onStatusUpdated);
 
   int networks_found = 0;
-  while (GVM.find_and_join_light_wifi(&networks_found)) {
+  int join_failed = 0;
+  int join_attempted = 0;
+  while (join_failed = GVM.find_and_join_light_wifi(&networks_found)) {
     if (networks_found) {
       Serial.println("Couldn't connect to any light, trying again");
       set_screen_text("Couldn't connect to any light, trying again");
@@ -127,13 +129,18 @@ void setup() {
       set_screen_text("No lights found, trying again in 20 seconds");
       delay(20000);
     }
+    join_attempted++;
+    if (join_attempted > 2)
+      break;    
   }
 
   // Write info in serial logs.
-  Serial.print("Connected to the WiFi network. IP: ");
-  Serial.println(WiFi.localIP());
-  Serial.printf("Base station is: %s\n", WiFi.BSSIDstr().c_str());
-  Serial.printf("Receive strength is: %d\n", WiFi.RSSI());
+  if (!join_failed) {
+    Serial.print("Connected to the WiFi network. IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.printf("Base station is: %s\n", WiFi.BSSIDstr().c_str());
+    Serial.printf("Receive strength is: %d\n", WiFi.RSSI());
+  }
 
   // Write info to LCD.
   update_screen_status();
