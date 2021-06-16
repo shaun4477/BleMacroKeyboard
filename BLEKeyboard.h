@@ -8,6 +8,7 @@ class BleKeyboardHandler {
     BleKeyboardHandler();
     void startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)());
     bool keyboardConnected();  
+    int getConnectedCount();
     uint8_t *getPeerAddress();
     void sendKey(uint8_t modifier, uint8_t key, uint8_t key2);
     void sendString(char *str);
