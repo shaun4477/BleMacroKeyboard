@@ -61,6 +61,18 @@ void onKeyboardInitialized() {
                 (*pLocalAddr)[3], (*pLocalAddr)[4], (*pLocalAddr)[5]);
 }
 
+void set_screen_text(String newText, int textFont = 2) {
+  static String lastText; 
+  if (newText == lastText)
+    return;
+
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setCursor(0, 0, 2);
+  M5.Lcd.setTextFont(textFont);
+  M5.Lcd.print(newText);
+  lastText = newText;      
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting BLE + GVM Light console...\n");
@@ -102,22 +114,31 @@ void setup() {
   GVM.callbackOnWiFiConnectAttempt(onWiFiConnectAttempt);
   GVM.callbackOnStatusUpdated(onStatusUpdated);
 
-  int networks_found = 0, max_search = 2;
-  while (GVM.find_and_join_light_wifi(&networks_found) && max_search--) {
+  int networks_found = 0;
+  int join_failed = 0;
+  int join_attempted = 0;
+  while (join_failed = GVM.find_and_join_light_wifi(&networks_found)) {
     if (networks_found) {
       Serial.println("Couldn't connect to any light, trying again");
+      set_screen_text("Couldn't connect to any light, trying again");
       delay(1000);
     } else {
       Serial.println("No lights found, trying again in 5 seconds");
+      set_screen_text("No lights found, trying again in 5 seconds");
       delay(5000);
     }
+    join_attempted++;
+    if (join_attempted > 2)
+      break;    
   }
 
   // Write info in serial logs.
-  Serial.print("Connected to the WiFi network. IP: ");
-  Serial.println(WiFi.localIP());
-  Serial.printf("Base station is: %s\n", WiFi.BSSIDstr().c_str());
-  Serial.printf("Receive strength is: %d\n", WiFi.RSSI());
+  if (!join_failed) {
+    Serial.print("Connected to the WiFi network. IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.printf("Base station is: %s\n", WiFi.BSSIDstr().c_str());
+    Serial.printf("Receive strength is: %d\n", WiFi.RSSI());
+  }
 
   // Write info to LCD.
   update_screen_status();
@@ -131,7 +152,6 @@ int screen_mode = 0;
 
 void update_screen_status() {
   StreamString o;
-  static String lastUpdate;
   LightStatus light_status = GVM.getLightStatus();
 
   switch (mode_set[screen_mode]) {
@@ -208,14 +228,7 @@ void update_screen_status() {
     }
   }
 
-  if (lastUpdate != o) {
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 0, 2);
-    M5.Lcd.setTextFont(mode_set[screen_mode] == MODE_SUMMARY || mode_set[screen_mode] == MODE_KEYBOARD_TEST ? 2 : 4);
-    M5.Lcd.print(o);    
-  }
-  
-  lastUpdate = o;
+  set_screen_text(o, mode_set[screen_mode] == MODE_SUMMARY || mode_set[screen_mode] == MODE_KEYBOARD_TEST ? 2 : 4); 
 }
 
 void test_screen_idle_off() {
