@@ -50,10 +50,7 @@ static void onStatusUpdated() {
 }
 
 void onKeyboardConnect() {
-  uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
-  setScreenText("BLE Keyboard connected\nPeer: %02x:%02x:%02x:%02x:%02x:%02x",
-                peerAddress[0], peerAddress[1], peerAddress[2],
-                peerAddress[3], peerAddress[4], peerAddress[5]);    
+  setScreenText("BLE Keyboard connected\nPeer: %s", BleMacroKeyboard.getPeerAddress().toString().c_str());
 }
 
 void onKeyboardInitialized() {
@@ -97,21 +94,22 @@ void setup() {
   // Starting bluetooth will cause a spurious interrupt on PIN 39, 
   // be sure to ignore it
   setScreenText("Initializing BLE Keyboard...");
-  BleMacroKeyboard.startKeyboard(onKeyboardInitialized, onKeyboardConnect);
+  BleMacroKeyboard.startKeyboard(onKeyboardInitialized, onKeyboardConnect, NULL, false, NULL, 
+                                 "Meeting Keyboard", ESP_LE_AUTH_BOND);
 
   GVM.debugOn();
 
   GVM.callbackOnWiFiConnectAttempt(onWiFiConnectAttempt);
   GVM.callbackOnStatusUpdated(onStatusUpdated);
 
-  int networks_found = 0;
-  while (GVM.find_and_join_light_wifi(&networks_found)) {
+  int networks_found = 0, max_search = 2;
+  while (GVM.find_and_join_light_wifi(&networks_found) && max_search--) {
     if (networks_found) {
       Serial.println("Couldn't connect to any light, trying again");
       delay(1000);
     } else {
-      Serial.println("No lights found, trying again in 20 seconds");
-      delay(20000);
+      Serial.println("No lights found, trying again in 5 seconds");
+      delay(5000);
     }
   }
 
@@ -140,10 +138,7 @@ void update_screen_status() {
     case MODE_SUMMARY:
       o.printf("BLE: ");
       if (BleMacroKeyboard.keyboardConnected()) {
-        uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
-        o.printf("%02x:%02x:%02x:%02x:%02x:%02x",
-                 peerAddress[0], peerAddress[1], peerAddress[2],
-                 peerAddress[3], peerAddress[4], peerAddress[5]);    
+        o.printf("%s", BleMacroKeyboard.getPeerAddress().toString().c_str());
       }
       else 
         o.printf("Waiting");
@@ -205,10 +200,7 @@ void update_screen_status() {
       o.printf("Connected #: %d\n", BleMacroKeyboard.getConnectedCount());
       o.printf("Remote: ");
       if (BleMacroKeyboard.keyboardConnected()) {
-        uint8_t *peerAddress = BleMacroKeyboard.getPeerAddress();
-        o.printf("%02x:%02x:%02x:%02x:%02x:%02x",
-                 peerAddress[0], peerAddress[1], peerAddress[2],
-                 peerAddress[3], peerAddress[4], peerAddress[5]);    
+        o.printf("%s", BleMacroKeyboard.getPeerAddress().toString().c_str());
       }
       else 
         o.printf("Waiting");

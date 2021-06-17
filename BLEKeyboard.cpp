@@ -28,73 +28,59 @@
 #include "HIDKeyboardTypes.h"
 #include "BleKeyboard.h"
 
-const char *deviceName = "Meeting Keyboard";
-const char *manufacturerName = "SMC";
+const char *deviceName = DEFAULT_KEYBOARD_NAME;
+const char *manufacturerName = KEYBOARD_MANUFACTURER;
+esp_ble_auth_req_t mainKeyboardAuthMode = ESP_LE_AUTH_REQ_SC_MITM_BOND;
 
 static BLEHIDDevice* hid;
 static BLECharacteristic* input;
 static BLECharacteristic* output;
 
-#define ALLOW_MULTI_CONNECT 1
-
-static bool connected = false;
+static BLEServer *pKeyServer = NULL;
 static int connectedCount = 0;
 static void (*mainOnInitialized)() = NULL;
 static void (*mainOnConnect)() = NULL;
-static uint8_t peerAddress[8] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+static void (*mainOnDisconnect)() = NULL;
+static void (*mainOnPassKeyNotify)(uint32_t pass_key) = NULL;
+static bool mainAllowMultiConnect = false;
+static BLEAddress peerAddress("00:00:00:00:00:00");
+static std::map<uint16_t, conn_info_t> connectedClientsMap;
+const char *LOG_TAG = "blekeyboard"; 
 
 BleKeyboardHandler BleKeyboard;
 
+class MySecurity : public BLESecurityCallbacks {
+  bool onConfirmPIN(uint32_t pin){
+    return false;
+  }
+  
+  uint32_t onPassKeyRequest(){
+    ESP_LOGI(LOG_TAG, "On PassKeyRequest");
+    return 123456;
+  }
+
+  void onPassKeyNotify(uint32_t pass_key){
+    ESP_LOGI(LOG_TAG, "On passkey Notify number:%d", pass_key);
+    if (mainOnPassKeyNotify)
+      mainOnPassKeyNotify(pass_key);
+  }
+
+  bool onSecurityRequest(){
+    ESP_LOGI(LOG_TAG, "On Security Request");
+    return true;
+  }
+
+  void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl){
+    ESP_LOGI(LOG_TAG, "Authentication complete, starting BLE work!");
+    if(cmpl.success){
+      uint16_t length;
+      esp_ble_gap_get_whitelist_size(&length);
+      ESP_LOGD(LOG_TAG, "Whitelist size now: %d", length);
+    }
+  }
+};
+
 class MyCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param){
-    connected = true;
-    
-    BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
-
-    connectedCount++;
-    
-    Serial.printf("Connection id %d\n", param->connect.conn_id);
-
-    // Connected count is incremented AFTER this callback is invoked
-    Serial.printf("BLE keyboard connected, count %d\n", pServer->getConnectedCount());
-
-    /* 
-    for (auto const &it : pServer->getPeerDevices(false)) {
-      Serial.printf("Server Connection Id %d Data 0x%08x\n", it.first, it.second);
-    }
-    for (auto const &it : pServer->getPeerDevices(true)) {
-      Serial.printf("Client Connection Id %d Data 0x%08x\n", it.first, it.second);
-    }
-    */ 
-    
-    desc->setNotifications(true);
-    
-    Serial.printf("Connection from %02x:%02x:%02x:%02x:%02x:%02x\n",
-                 param->connect.remote_bda[0], param->connect.remote_bda[1], param->connect.remote_bda[2],
-                 param->connect.remote_bda[3], param->connect.remote_bda[4], param->connect.remote_bda[5]);
-
-    memcpy(peerAddress, param->connect.remote_bda, sizeof(peerAddress));
-    
-    if (mainOnConnect)
-      mainOnConnect();    
-
-    if (ALLOW_MULTI_CONNECT)
-      BLEDevice::startAdvertising();      
-  }
-
-  void onDisconnect(BLEServer* pServer){
-    if (pServer->getConnectedCount() == 0)
-      connected = false;
-    
-    Serial.printf("BLE Keyboard DISCONNECTED, clients now %d\n", pServer->getConnectedCount());
-    connectedCount--;
-
-    if (!connected) {
-      BLE2902* desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
-      
-      desc->setNotifications(false);
-    }
-  }
 };
 
 /*
@@ -104,27 +90,101 @@ class MyCallbacks : public BLEServerCallbacks {
  * bit 1 - CAPS LOCK
  * bit 2 - SCROLL LOCK
  */
- class MyOutputCallbacks : public BLECharacteristicCallbacks {
- void onWrite(BLECharacteristic* me){
+class MyOutputCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* me){
     uint8_t* value = (uint8_t*)(me->getValue().c_str());
-    ESP_LOGI(LOG_TAG, "special keys: %d", *value);
+    ESP_LOGI(LOG_TAG, "Special keys in output report: %d", *value);
   }
 };
+
+static void handle_gatts_event(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t* param) {
+  /* NOTE: This assumes that there is only one GATT server running in the ESP32, there is no 
+   * way to get the gatts_if from the BLEServer class to check. 
+   * 
+   * We could also process ESP_GATTS_REG_EVT to get the interface, but this is overkill */
+
+  BLE2902* desc = NULL;
+  switch (event) {
+    case ESP_GATTS_CONNECT_EVT:
+      connectedCount++;
+      
+      conn_info_t conn_info;
+      memcpy(conn_info.peer, param->connect.remote_bda, sizeof(conn_info.peer));
+      connectedClientsMap.insert(std::pair<uint16_t, conn_info_t>(param->connect.conn_id, conn_info));
+
+      Serial.printf("BLE keyboard connected, connection id %d\n", param->connect.conn_id);
+
+      // Connected count is incremented AFTER this callback is invoked
+      Serial.printf("BLE keyboard connected\n");
+
+      desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+      desc->setNotifications(true);
+      
+      Serial.printf("Connection from %02x:%02x:%02x:%02x:%02x:%02x with connection id %d, count now %d\n",
+                   param->connect.remote_bda[0], param->connect.remote_bda[1], param->connect.remote_bda[2],
+                   param->connect.remote_bda[3], param->connect.remote_bda[4], param->connect.remote_bda[5],
+                   param->connect.conn_id,
+                   pKeyServer->getConnectedCount());
+
+      peerAddress = BLEAddress(param->connect.remote_bda);
+      
+      if (mainOnConnect)
+        mainOnConnect();    
+
+      if (mainAllowMultiConnect)
+        BLEDevice::startAdvertising();      
+
+      break;
+    case ESP_GATTS_DISCONNECT_EVT:
+      if (mainOnDisconnect)
+        mainOnDisconnect();    
+
+      Serial.printf("Disconnect from %02x:%02x:%02x:%02x:%02x:%02x with connection id %d, count now %d\n",
+                   param->disconnect.remote_bda[0], param->disconnect.remote_bda[1], param->disconnect.remote_bda[2],
+                   param->disconnect.remote_bda[3], param->disconnect.remote_bda[4], param->disconnect.remote_bda[5],
+                   param->disconnect.conn_id,
+                   pKeyServer->getConnectedCount());
+      
+      connectedClientsMap.erase(param->disconnect.conn_id);
+      connectedCount--;
+      if (connectedCount <= 0) {
+        desc = (BLE2902*)input->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+        desc->setNotifications(false);
+
+        BLEDevice::startAdvertising();      
+      }
+      
+      
+      break;
+    default:
+      break;
+  }
+}
 
 void taskServer(void*){
   Serial.println("Initialize BLE");
 
   Serial.println("Init device");
   BLEDevice::init(deviceName);
-  
+  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
+  BLEDevice::setSecurityCallbacks(new MySecurity());
+
   Serial.println("Create BLE server");
-  BLEServer *pServer = BLEDevice::createServer();
+  pKeyServer = BLEDevice::createServer();
 
-  Serial.println("Set callbacks");
-  pServer->setCallbacks(new MyCallbacks());
-  Serial.printf("Created BLE server at 0x%08x\n", pServer);
+  // We need a callbacks object even if it's empty because
+  // otherwise we'll get a null pointer dereference for 
+  // m_pServerCallbacks->onMtuChanged
+  pKeyServer->setCallbacks(new MyCallbacks());
 
-  hid = new BLEHIDDevice(pServer);
+  // Unfortunately the GATTS handler in BLEServer doesn't
+  // give us the connection id on disconnect, so we register
+  // our own handler too 
+  BLEDevice::setCustomGattsHandler(handle_gatts_event);
+
+  Serial.printf("Created BLE server at %p\n", (void *) pKeyServer);
+
+  hid = new BLEHIDDevice(pKeyServer);
   input = hid->inputReport(1); // <-- input REPORTID from report map
   output = hid->outputReport(1); // <-- output REPORTID from report map
 
@@ -143,8 +203,17 @@ void taskServer(void*){
   hid->hidInfo(0x00,0x02);
 
   BLESecurity *pSecurity = new BLESecurity();
-//  pSecurity->setKeySize();
-  pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
+  // pSecurity->setKeySize();
+  // pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
+  // pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_ONLY);
+  // Require authentication, prevent MITM and bond the devices after pairing 
+  // pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND); 
+  // During negotiation set this device up to show the passcode 
+  pSecurity->setAuthenticationMode(mainKeyboardAuthMode); 
+  if (mainKeyboardAuthMode == ESP_LE_AUTH_REQ_SC_MITM_BOND || 
+      mainKeyboardAuthMode == ESP_LE_AUTH_REQ_SC_ONLY) 
+    pSecurity->setCapability(ESP_IO_CAP_OUT);
+  pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
 
   const uint8_t report[] = {
     USAGE_PAGE(1),      0x01,       // Generic Desktop Ctrls
@@ -184,7 +253,7 @@ void taskServer(void*){
   hid->reportMap((uint8_t*)report, sizeof(report));
   hid->startServices();
 
-  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  BLEAdvertising *pAdvertising = pKeyServer->getAdvertising();
   pAdvertising->setAppearance(HID_KEYBOARD);
   pAdvertising->addServiceUUID(hid->hidService()->getUUID());
   pAdvertising->start();
@@ -203,27 +272,44 @@ BleKeyboardHandler::BleKeyboardHandler() {
   connectedCount = 0;
 }
 
-uint8_t *BleKeyboardHandler::getPeerAddress() {
+BLEAddress BleKeyboardHandler::getPeerAddress() {
   return peerAddress;
 }
 
 bool BleKeyboardHandler::keyboardConnected() {
-  return connected;
+  return connectedCount > 0;
 }
 
-void BleKeyboardHandler::startKeyboard(void (*onInitialized_p)(), void (*onConnect_p)()) {
+void BleKeyboardHandler::startKeyboard(void (*onInitialized_p)(),
+                                       void (*onConnect_p)(),
+                                       void (*onPassKeyNotify_p)(uint32_t),
+                                       bool allowMultiConnect,
+                                       void (*onDisconnect_p)(),
+                                       const char *keyboardName,
+                                       esp_ble_auth_req_t authMode) {
   mainOnInitialized = onInitialized_p;
   mainOnConnect = onConnect_p;
+  mainOnPassKeyNotify = onPassKeyNotify_p;
+  mainAllowMultiConnect = allowMultiConnect;
+  mainOnDisconnect = onDisconnect_p;
+  mainKeyboardAuthMode = authMode;
+  if (keyboardName)
+    deviceName = strdup(keyboardName);
   Serial.printf("Starting keyboard task, on init callback %p on connect callback %p\n", mainOnInitialized, mainOnConnect);
   delay(10);
   xTaskCreate(taskServer, "server", 20000, NULL, 5, NULL);
 }
 
+std::map<uint16_t, conn_info_t> BleKeyboardHandler::getConnectedClients() {
+  return connectedClientsMap;
+}
+
 /* Static method */
 void BleKeyboardHandler::directSendMsg(uint8_t *msg, int len) {
-  if (connected) {
+  if (connectedCount > 0) {
     input->setValue(msg, len);
     input->notify();  
+    vTaskDelay(3);
   }  
 }
 
@@ -251,9 +337,10 @@ int BleKeyboardHandler::getConnectedCount() {
   return connectedCount;
 }
 
-void BleKeyboardHandler::sendString(char *str) {
+void BleKeyboardHandler::sendString(const char *str) {
   while (*str) {
     KEYMAP map = keymap[(uint8_t)*str];
+    // Serial.printf("Send %d %d for '%c' %d\n", map.modifier, map.usage, *str, (uint8_t) *str);
     sendKey(map.modifier, map.usage, 0x0);
     str++;
   }
