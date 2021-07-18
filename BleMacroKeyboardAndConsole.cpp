@@ -76,6 +76,41 @@ void set_screen_text(String newText, int textFont = 2) {
   lastText = newText;      
 }
 
+#define PAIR_MAX_DEVICES 20
+
+char *bda2str(const uint8_t* bda, char *str, size_t size)
+{
+  if (bda == NULL || str == NULL || size < 18)
+    return NULL;
+  sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x",
+          bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+  return str;
+}
+
+void dump_bluetooth_info() {
+  esp_ble_bond_dev_t pairedDeviceBtAddr[PAIR_MAX_DEVICES];
+  char bda_str[18];
+
+  // Get the numbers of bonded/paired devices in the BT module
+  int count = esp_ble_get_bond_device_num();
+  if(!count) {
+    Serial.println("No bonded device found.");
+  } else {
+    Serial.print("Bonded device count: "); Serial.println(count);
+    if(PAIR_MAX_DEVICES < count) {
+      count = PAIR_MAX_DEVICES;
+      Serial.print("Reset bonded device count: "); Serial.println(count);
+    }
+    esp_err_t tError =  esp_ble_get_bond_device_list(&count, pairedDeviceBtAddr);
+    if(ESP_OK == tError) {
+      for(int i = 0; i < count; i++) {
+        Serial.print("Bonded device # "); Serial.print(i); Serial.print(" -> ");
+        Serial.println(bda2str(pairedDeviceBtAddr[i].bd_addr, bda_str, 18));
+      }
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting BLE + GVM Light console...\n");
@@ -148,6 +183,7 @@ void setup() {
 
   last_button_millis = millis();
 
+  dump_bluetooth_info();
   Serial.printf("Setup complete\n");
 }
 
