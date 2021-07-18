@@ -104,6 +104,9 @@ static void handle_gatts_event(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_i
    * We could also process ESP_GATTS_REG_EVT to get the interface, but this is overkill */
 
   BLE2902* desc = NULL;
+
+  Serial.printf("BLE event %d\n", event);
+
   switch (event) {
     case ESP_GATTS_CONNECT_EVT:
       connectedCount++;

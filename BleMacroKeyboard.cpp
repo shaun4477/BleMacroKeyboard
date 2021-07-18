@@ -1,3 +1,4 @@
+#include "Arduino.h"
 #include "BleMacroKeyboard.h"
 #include "eeprom_config.h"
 

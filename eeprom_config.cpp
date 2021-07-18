@@ -27,7 +27,7 @@ inline void updateEeprom(uint16_t address, uint8_t value) {
 void formatEeprom() {
   Serial.println(F("Formatting EEPROM"));
 
-  Serial.printf("Global EEPROM at 0x%08x with size %d\n", EEPROM, EEPROM.length());
+  Serial.printf("Global EEPROM at %p with size %d\n", &EEPROM, EEPROM.length());
   Serial.printf("Current check bytes 0x%02x 0x%02x\n", EEPROM.read(0), EEPROM.read(1));
   updateEeprom(0, EEPROM_CHECK_BYTE_1);
   updateEeprom(1, EEPROM_CHECK_BYTE_2);
@@ -157,7 +157,7 @@ int readPinConfigUpdateFromSerial() {
   int rc;
   char terminator;
   
-  if (rc = serialTimedReadNum(&pin, &terminator, false) || terminator != ' ') {
+  if ((rc = serialTimedReadNum(&pin, &terminator, false)) || terminator != ' ') {
     Serial.println("Invalid pin"); 
     return -1; 
   }
